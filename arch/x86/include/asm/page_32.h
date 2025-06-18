@@ -6,6 +6,7 @@
 
 #ifndef __ASSEMBLY__
 
+#define direct_mapping_size 0
 #define __phys_addr_nodebug(x)	((x) - PAGE_OFFSET)
 #ifdef CONFIG_DEBUG_VIRTUAL
 extern unsigned long __phys_addr(unsigned long);

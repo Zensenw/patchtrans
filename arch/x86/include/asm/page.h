@@ -19,6 +19,7 @@
 struct page;
 
 #include <linux/range.h>
+#include <asm/mktme.h>
 extern struct range pfn_mapped[];
 extern int nr_pfn_mapped;
 
@@ -27,6 +28,8 @@ static inline void clear_user_page(void *page, unsigned long vaddr,
 {
 	clear_page(page);
 }
+
+void copy_page(void *to, void *from);
 
 static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 				  struct page *topage)
@@ -68,6 +71,11 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 #define virt_to_page(kaddr)	pfn_to_page(__pa(kaddr) >> PAGE_SHIFT)
 extern bool __virt_addr_valid(unsigned long kaddr);
 #define virt_addr_valid(kaddr)	__virt_addr_valid((unsigned long) (kaddr))
+
+#define page_to_virt_keyid(x, keyid) \
+	(__va(PFN_PHYS(page_to_pfn(x))) + (keyid) * direct_mapping_size)
+
+#define page_to_virt(x) page_to_virt_keyid(x, page_keyid(x))
 
 static __always_inline void *pfn_to_kaddr(unsigned long pfn)
 {

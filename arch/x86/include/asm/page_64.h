@@ -17,6 +17,8 @@ extern unsigned long phys_base;
 extern unsigned long page_offset_base;
 extern unsigned long vmalloc_base;
 extern unsigned long vmemmap_base;
+extern unsigned long direct_mapping_size;
+extern unsigned long direct_mapping_mask;
 
 static __always_inline unsigned long __phys_addr_nodebug(unsigned long x)
 {
@@ -25,7 +27,7 @@ static __always_inline unsigned long __phys_addr_nodebug(unsigned long x)
 	/* use the carry flag to determine if x was < __START_KERNEL_map */
 	x = y + ((x > y) ? phys_base : (__START_KERNEL_map - PAGE_OFFSET));
 
-	return x;
+	return x & direct_mapping_mask;
 }
 
 #ifdef CONFIG_DEBUG_VIRTUAL
@@ -43,6 +45,33 @@ void clear_page_orig(void *page);
 void clear_page_rep(void *page);
 void clear_page_erms(void *page);
 
+
+#ifdef CONFIG_X86_INTEL_MKTME
+static inline void _movdir64b(void *dst, const void *src)
+{
+	// assert((uintptr_t)src == (uintptr_t)((uintptr_t)src & ~(64-1)));
+	// assert((uintptr_t)dst == (uintptr_t)((uintptr_t)dst & ~(64-1)));
+	const struct { char _[64]; } *__src = src;
+	struct { char _[64]; } *__dst = dst;
+
+	asm volatile(".byte 0x66, 0x0f, 0x38, 0xf8, 0x02"
+		     : "+m" (*__dst)
+		     :  "m" (*__src), "a" (__dst), "d" (__src));
+}
+static inline void clear_page(void *page)
+{
+	uint8_t* dst = (uint8_t*)page;
+	uint32_t block = 0;
+	__attribute__((aligned(64))) const uint8_t ZeroBlock[64] = { 0 };
+	asm volatile("mfence");
+	for (block = 0; block < (4096 / 64); block++) {
+		_movdir64b(dst, ZeroBlock);
+		dst += 64;
+	}
+	asm volatile("mfence");
+}
+#else
+
 static inline void clear_page(void *page)
 {
 	/*
@@ -57,8 +86,26 @@ static inline void clear_page(void *page)
 			   "0" (page)
 			   : "cc", "memory", "rax", "rcx");
 }
+#endif /* CONFIG_X86_INTEL_MKTME */
 
-void copy_page(void *to, void *from);
+// void copy_page(void *to, void *from);
+#if defined(CONFIG_X86_INTEL_MKTME)
+static inline void copy_page(void *to, void* from)
+{
+	uint8_t* dst = (uint8_t*)to;
+	uint8_t* src = (uint8_t*)from;
+	uint32_t block = 0;
+	asm volatile("mfence");
+	for (block = 0; block < (4096 / 64); block++) {
+		_movdir64b(dst, src);
+		dst += 64;
+		src += 64;
+	}
+	asm volatile("mfence");
+}
+#else
+void copy_page_orig(void *to, void *from);
+#endif
 
 #ifdef CONFIG_X86_5LEVEL
 /*
